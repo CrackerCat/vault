@@ -1,131 +1,86 @@
 package crypto
 
 import (
-	"io/ioutil"
+	"context"
+	"crypto/rand"
 
-	"github.com/hashicorp/vault/helper/dhutil"
+	wrapping "github.com/hashicorp/go-kms-wrapping"
+	"github.com/hashicorp/go-kms-wrapping/wrappers/aead"
 )
 
-type kubeKeyManager struct{}
+var _ KeyManager = (*KubeEncryptionKey)(nil)
+var _ Encrypter = (*KubeEncryptionKey)(nil)
 
-func (k *kubeKeyManager) New(saPath string) (*kubeEncryptionKey, error) {
-	var key kubeEncryptionKey
-	jwt, err := ioutil.ReadFile(saPath)
-	if err != nil {
-		return &key, err
-	}
-	key.aad = jwt
-
-	_, key.privateKey, err = dhutil.GeneratePublicPrivateKey()
-	if err != nil {
-		return &key, err
-	}
-
-	return &key, nil
+// KubeEncryptionKey TODO
+type KubeEncryptionKey struct {
+	renewable bool
+	wrapper   *aead.Wrapper
 }
 
-func (k *kubeKeyManager) Load(privateKey []byte, saPath string) (*kubeEncryptionKey, error) {
-	jwt, err := ioutil.ReadFile(saPath)
-	if err != nil {
-		return &kubeEncryptionKey{}, err
+// NewK8s returns a new instance of the Kube encryption key. Kubernetes
+// encryption keys aren't renewable.
+func NewK8s(existingKey []byte) (*KubeEncryptionKey, error) {
+	k := &KubeEncryptionKey{
+		renewable: false,
+		wrapper:   aead.NewWrapper(nil),
 	}
 
-	return &kubeEncryptionKey{
-		aad:        jwt,
-		privateKey: privateKey,
-	}, nil
+	k.wrapper.SetConfig(map[string]string{"key_id": KeyID})
+	rootKey := make([]byte, 32)
+	if existingKey != nil {
+		rootKey = existingKey
+	}
+
+	if rootKey == nil {
+		_, err := rand.Read(rootKey)
+		if err != nil {
+			return k, err
+		}
+	}
+
+	if err := k.wrapper.SetAESGCMKeyBytes(rootKey); err != nil {
+		return k, err
+	}
+
+	return k, nil
 }
 
-func (k *kubeKeyManager) Renew() error {
+// Get returns the encryption key in a format optimized for storage.
+// In k8s we store the key as is, so just return the key stored.
+func (k *KubeEncryptionKey) Get() []byte {
+	return k.wrapper.GetKeyBytes()
+}
+
+// Renewable lets the caller know if this encryption key type is
+// renewable. In Kubernetes the key isn't renewable.
+func (k *KubeEncryptionKey) Renewable() bool {
+	return k.renewable
+}
+
+// Renewer is used when the encryption key type is renewable. Since Kubernetes
+// keys aren't renewable, returning nothing.
+func (k *KubeEncryptionKey) Renewer(ctx context.Context, ch chan struct{}) error {
 	return nil
 }
 
-type kubeEncryptionKey struct {
-	aad        []byte
-	privateKey []byte
+// Encrypt takes plaintext values and encrypts them using the store key and additional
+// data. The ciphertext and nonce are returned and should be used for decryption.
+func (k *KubeEncryptionKey) Encrypt(ctx context.Context, plaintext, aad []byte) ([]byte, []byte, error) {
+	blob, err := k.wrapper.Encrypt(ctx, plaintext, aad)
+	if err != nil {
+		return nil, nil, err
+	}
+	return blob.Ciphertext, blob.IV, nil
 }
 
-func (k *kubeEncryptionKey) Encrypt(plaintext []byte) ([]byte, []byte, error) {
-	return dhutil.EncryptAES(k.privateKey, plaintext, k.aad)
+// Decrypt takes ciphertext and nonce values and returns the decrypted value.
+func (k *KubeEncryptionKey) Decrypt(ctx context.Context, ciphertext, nonce, aad []byte) ([]byte, error) {
+	blob := &wrapping.EncryptedBlobInfo{
+		Ciphertext: ciphertext,
+		IV:         nonce,
+		KeyInfo: &wrapping.KeyInfo{
+			KeyID: KeyID,
+		},
+	}
+	return k.wrapper.Decrypt(ctx, blob, aad)
 }
-
-func (k *kubeEncryptionKey) Decrypt(ciphertext, nonce []byte) ([]byte, error) {
-	return dhutil.DecryptAES(k.privateKey, ciphertext, nonce, k.aad)
-}
-
-/*
-package main
-
-func main() {
-
-	// **Kubernetes**
-	// New workflow
-	var k8sKey crypto.kubeKeyManager
-	key, err := k8sKey.NewKey(saPath)
-	if err != nil {
-		...
-	}
-
-	err = key.Store("path/to/store")
-	if err != nil {
-		...
-	}
-
-	ciphertext, nonce, err := key.Encrypt([]byte{"myvalue"})
-	if err != nil {
-		...
-	}
-
-	// Restore workflow
-	var k8sKey crypto.kubeKeyManager
-	key, err := k8sKey.Load(privateKey, saPath)
-	if err != nil {
-		...
-	}
-
-    plaintext, err := key.Decrypt(ciphertext, nonce)
-	if err != nil {
-		...
-	}
-*/
-
-/*
-package main
-
-func main() {
-	// **Response Wrap**
-	var responseWrappedKey crypto.responseWrappedKeyManager
-	key, err := responseWrappedKey.NewKey("")
-	if err != nil {
-		...
-	}
-
-	err = key.Store("path/to/store")
-	if err != nil {
-		...
-	}
-
-	err = key.Renew()
-	if err != nil {
-		...
-	}
-
-	ciphertext, nonce, err := key.Encrypt([]byte{"myvalue"})
-	if err != nil {
-		...
-	}
-
-	// Restore workflow
-	var responseWrappedKey crypto.responseWrappedKeyManager
-	key, err := responseWrappedKey.Load(privateKey, saPath)
-	if err != nil {
-		...
-	}
-
-    plaintext, err := key.Decrypt(ciphertext, nonce)
-	if err != nil {
-		...
-	}
-
-}
-*/
