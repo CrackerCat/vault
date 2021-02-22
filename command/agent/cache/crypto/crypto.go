@@ -9,31 +9,27 @@ const (
 	KeyID = "root"
 )
 
-// Encrypter TODO
-type Encrypter interface {
-	Encrypt(context.Context, []byte, []byte) ([]byte, []byte, error)
-	Decrypt(context.Context, []byte, []byte, []byte) ([]byte, error)
-}
-
-// Encrypt TODO
-func Encrypt(ctx context.Context, e Encrypter, plaintext []byte, aad []byte) ([]byte, []byte, error) {
-	return e.Encrypt(ctx, plaintext, aad)
-}
-
-// Decrypt TODO
-func Decrypt(ctx context.Context, e Encrypter, ciphertext, nonce []byte, aad []byte) ([]byte, error) {
-	return e.Decrypt(ctx, ciphertext, nonce, aad)
-}
-
 // KeyManager TODO
 type KeyManager interface {
 	Get() []byte
 	Renewable() bool
 	Renewer(context.Context, chan struct{}) error
+	Encrypt(context.Context, []byte, []byte) ([]byte, error)
+	Decrypt(context.Context, []byte, []byte) ([]byte, error)
+}
+
+// Encrypt TODO
+func Encrypt(ctx context.Context, k KeyManager, plaintext []byte, aad []byte) ([]byte, error) {
+	return k.Encrypt(ctx, plaintext, aad)
+}
+
+// Decrypt TODO
+func Decrypt(ctx context.Context, k KeyManager, ciphertext, aad []byte) ([]byte, error) {
+	return k.Decrypt(ctx, ciphertext, aad)
 }
 
 // New TODO
-func New(keyType string, existingKey, aad []byte) (KeyManager, error) {
+func New(keyType string, existingKey []byte) (KeyManager, error) {
 	switch keyType {
 	case "k8s":
 		k8s, err := NewK8s(existingKey)
