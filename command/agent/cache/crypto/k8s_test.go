@@ -7,7 +7,7 @@ import (
 )
 
 func TestCrypto_KubernetesNewKey(t *testing.T) {
-	k8sKey, err := New("k8s", []byte{})
+	k8sKey, err := NewK8s([]byte{})
 	if err != nil {
 		t.Fatalf(fmt.Sprintf("unexpected error: %s", err))
 	}
@@ -20,7 +20,7 @@ func TestCrypto_KubernetesNewKey(t *testing.T) {
 	plaintextInput := []byte("test")
 	aad := []byte("kubernetes")
 
-	ciphertext, err := Encrypt(nil, k8sKey, plaintextInput, aad)
+	ciphertext, err := k8sKey.Encrypt(nil, plaintextInput, aad)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -29,7 +29,7 @@ func TestCrypto_KubernetesNewKey(t *testing.T) {
 		t.Fatalf("ciphertext nil, it shouldn't be")
 	}
 
-	plaintext, err := Decrypt(nil, k8sKey, ciphertext, aad)
+	plaintext, err := k8sKey.Decrypt(nil, ciphertext, aad)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -49,7 +49,7 @@ func TestCrypto_KuberneteExistingKey(t *testing.T) {
 		t.Fatal(n)
 	}
 
-	k8sKey, err := New("k8s", rootKey)
+	k8sKey, err := NewK8s(rootKey)
 	if err != nil {
 		t.Fatalf(fmt.Sprintf("unexpected error: %s", err))
 	}
@@ -66,7 +66,7 @@ func TestCrypto_KuberneteExistingKey(t *testing.T) {
 	plaintextInput := []byte("test")
 	aad := []byte("kubernetes")
 
-	ciphertext, err := Encrypt(nil, k8sKey, plaintextInput, aad)
+	ciphertext, err := k8sKey.Encrypt(nil, plaintextInput, aad)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -75,7 +75,7 @@ func TestCrypto_KuberneteExistingKey(t *testing.T) {
 		t.Fatalf("ciphertext nil, it shouldn't be")
 	}
 
-	plaintext, err := Decrypt(nil, k8sKey, ciphertext, aad)
+	plaintext, err := k8sKey.Decrypt(nil, ciphertext, aad)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -86,7 +86,7 @@ func TestCrypto_KuberneteExistingKey(t *testing.T) {
 }
 
 func TestCrypto_KubernetePassGeneratedKey(t *testing.T) {
-	k8sFirstKey, err := New("k8s", []byte{})
+	k8sFirstKey, err := NewK8s([]byte{})
 	if err != nil {
 		t.Fatalf(fmt.Sprintf("unexpected error: %s", err))
 	}
@@ -99,7 +99,7 @@ func TestCrypto_KubernetePassGeneratedKey(t *testing.T) {
 	plaintextInput := []byte("test")
 	aad := []byte("kubernetes")
 
-	ciphertext, err := Encrypt(nil, k8sFirstKey, plaintextInput, aad)
+	ciphertext, err := k8sFirstKey.Encrypt(nil, plaintextInput, aad)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
@@ -108,7 +108,7 @@ func TestCrypto_KubernetePassGeneratedKey(t *testing.T) {
 		t.Fatalf("ciphertext nil, it shouldn't be")
 	}
 
-	k8sLoadedKey, err := New("k8s", firstKey)
+	k8sLoadedKey, err := NewK8s(firstKey)
 	if err != nil {
 		t.Fatalf(fmt.Sprintf("unexpected error: %s", err))
 	}
@@ -122,7 +122,7 @@ func TestCrypto_KubernetePassGeneratedKey(t *testing.T) {
 		t.Fatalf(fmt.Sprintf("keys do not match"))
 	}
 
-	plaintext, err := Decrypt(nil, k8sLoadedKey, ciphertext, aad)
+	plaintext, err := k8sFirstKey.Decrypt(nil, ciphertext, aad)
 	if err != nil {
 		t.Fatalf(err.Error())
 	}
